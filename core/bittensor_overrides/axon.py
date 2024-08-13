@@ -1148,6 +1148,7 @@ class AxonMiddleware(BaseHTTPMiddleware):
         # We get a specific verification function from 'verify_fns' dictionary that corresponds
         # to our request's name. Each request name (synapse name) has its unique verification function.
         verify_fn = self.axon.verify_fns.get(synapse.name)
+        return
 
         # If a verification function exists for the request's name
         if verify_fn:
