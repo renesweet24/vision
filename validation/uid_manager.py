@@ -147,51 +147,51 @@ class UidManager:
         i = 0
         tasks_in_progress = []
 
-        while uid_record.synthetic_requests_still_to_make > 0:
-            # Random perturbation to make sure we dont burst
-            if i == 0:
-                await asyncio.sleep(delay_between_requests * random.random())
-            else:
-                await asyncio.sleep(delay_between_requests * (random.random() * 0.05 + 0.95))
+        # while uid_record.synthetic_requests_still_to_make > 0:
+        #     # Random perturbation to make sure we dont burst
+        #     if i == 0:
+        #         await asyncio.sleep(delay_between_requests * random.random())
+        #     else:
+        #         await asyncio.sleep(delay_between_requests * (random.random() * 0.05 + 0.95))
 
-            if i % 100 == 0 and (i > 0 or self.is_testnet):
-                bt.logging.debug(
-                    f"synthetic requests still to make: {uid_record.synthetic_requests_still_to_make} on iteration {i} for uid {uid_record.axon_uid} and task {task}"
-                )
-            if uid_record.consumed_volume >= volume_to_score:
-                break
+        #     if i % 100 == 0 and (i > 0 or self.is_testnet):
+        #         bt.logging.debug(
+        #             f"synthetic requests still to make: {uid_record.synthetic_requests_still_to_make} on iteration {i} for uid {uid_record.axon_uid} and task {task}"
+        #         )
+        #     if uid_record.consumed_volume >= volume_to_score:
+        #         break
 
-            synthetic_data = await self.synthetic_data_manager.fetch_synthetic_data_for_task(task)
+        #     synthetic_data = await self.synthetic_data_manager.fetch_synthetic_data_for_task(task)
 
-            synthetic_synapse = tasks.TASKS_TO_SYNAPSE[task](**synthetic_data)
-            stream = isinstance(synthetic_synapse, bt.StreamingSynapse)
-            outgoing_model = getattr(base_models, synthetic_synapse.__class__.__name__ + core_cst.OUTGOING)
+        #     synthetic_synapse = tasks.TASKS_TO_SYNAPSE[task](**synthetic_data)
+        #     stream = isinstance(synthetic_synapse, bt.StreamingSynapse)
+        #     outgoing_model = getattr(base_models, synthetic_synapse.__class__.__name__ + core_cst.OUTGOING)
 
-            if not stream:
-                uid_queue.move_to_end(uid)
-                tasks_in_progress.append(
-                    asyncio.create_task(
-                        query_utils.query_miner_no_stream(
-                            uid_record, synthetic_synapse, outgoing_model, task, self.dendrite, synthetic_query=True
-                        )
-                    )
-                )
-            else:
-                uid_queue.move_to_end(uid)
-                generator = query_utils.query_miner_stream(
-                    uid_record, synthetic_synapse, outgoing_model, task, self.dendrite, synthetic_query=True
-                )
-                # We need to iterate through the generator to consume it - so the request finishes
-                tasks_in_progress.append(asyncio.create_task(self._consume_generator(generator)))
+        #     if not stream:
+        #         uid_queue.move_to_end(uid)
+        #         tasks_in_progress.append(
+        #             asyncio.create_task(
+        #                 query_utils.query_miner_no_stream(
+        #                     uid_record, synthetic_synapse, outgoing_model, task, self.dendrite, synthetic_query=True
+        #                 )
+        #             )
+        #         )
+        #     else:
+        #         uid_queue.move_to_end(uid)
+        #         generator = query_utils.query_miner_stream(
+        #             uid_record, synthetic_synapse, outgoing_model, task, self.dendrite, synthetic_query=True
+        #         )
+        #         # We need to iterate through the generator to consume it - so the request finishes
+        #         tasks_in_progress.append(asyncio.create_task(self._consume_generator(generator)))
 
-            # Need to make this here so its lowered regardless of the result of the above
-            uid_record.synthetic_requests_still_to_make -= 1
+        #     # Need to make this here so its lowered regardless of the result of the above
+        #     uid_record.synthetic_requests_still_to_make -= 1
 
-            i += 1
+        #     i += 1
 
-        # NOTE: Do we want to do this semi regularly, to not exceed bandwidth perhaps?
-        await asyncio.gather(*tasks_in_progress)
-        bt.logging.info(f"Done synthetic querying for task: {task} and uid: {uid} and volume: {volume}")
+        # # NOTE: Do we want to do this semi regularly, to not exceed bandwidth perhaps?
+        # await asyncio.gather(*tasks_in_progress)
+        # bt.logging.info(f"Done synthetic querying for task: {task} and uid: {uid} and volume: {volume}")
 
     async def make_organic_query(
         self, task: Task, stream: bool, synapse: bt.Synapse, outgoing_model: BaseModel
@@ -210,9 +210,10 @@ class UidManager:
             return JSONResponse(content={"error": f"No UIDs available for this task {task}"}, status_code=500)
         uid_record = self.uid_records_for_tasks[task][latest_uid]
         attempts = 0
+        MAX_ATTEMPTS = 10
 
         if not stream:
-            while attempts < 3:
+            while attempts < MAX_ATTEMPTS:
                 query_result: utility_models.QueryResult = await query_utils.query_miner_no_stream(
                     uid_record,
                     synapse,
@@ -226,7 +227,7 @@ class UidManager:
                 else:
                     break
         else:
-            while attempts < 3:
+            while attempts < MAX_ATTEMPTS:
                 generator = query_utils.query_miner_stream(
                     uid_record, synapse, outgoing_model, task, self.dendrite, synthetic_query=False
                 )
@@ -242,7 +243,7 @@ class UidManager:
                 except StopAsyncIteration:
                     attempts += 1
 
-        if attempts == 3:
+        if attempts == MAX_ATTEMPTS:
             return JSONResponse(content={"error": "Could not process request, mi apologies"}, status_code=500)
         return query_result
 
